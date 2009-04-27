@@ -1,0 +1,74 @@
+# Jeb Campbell <jebc@c4solutions.net>
+NOTE: This is last resort if you need your data now.  This worked for me, and 
+I hope it works for you.  If you have any reservations, please wait for Sun 
+to release something official, and don't blame me if your data is gone.
+
+PS -- This worked for me b/c I didn't try and replace the log on a running 
+system.  My log got borked on a system crash, but others have had data loss
+after trying to zpool replace the log device. 
+
+Please compile (and read the source) if you can, but just in case:
+md5sum logfix
+fc00c9494769abbc4e309d2efb13d11b  logfix
+
+Currently (as of 6/5/2008) if a log device gets wiped or lost from a pool, 
+you are no longer able to import the pool.
+
+The technical reason is that the log device info is not stored anywhere else, 
+so if you try to import the pool, the checksum of vdevs won't match.
+
+Perhaps ZFS shouldn't use log and cache devices in computing the pool's 
+checksum...
+
+Here is what you will need to recover:
+
+** /etc/zfs/zpool.cache from your install **
+To get this, I had to boot from a livecd, then:
+# zpool import -f rpool
+# mount -F zfs rpool/ROOT/opensolaris /mnt
+# cp /mnt/etc/zfs/zpool.cache /mnt/etc/zfs/zpool.cache.log
+Then you can copy that somewhere else, but save that copy...
+
+** guid of log device **
+The *only* place that guid exists is zpool.cache.log (assuming the log
+device is wiped.  So stash that file 5 places if you need to...
+Back to extracting the guid, this worked for me:
+# cp /mnt/etc/zfs/zpool.cache.log /etc/zfs
+# cd /etc/zfs
+# mv zpool.cache zpool.cache.running; cp zpool.cache.log zpool.cache; \
+	zdb -C > cache_dump; cp zpool.cache.running zpool.cache
+We just slipped the saved file in, dump it, then restore the old one.
+(I think zdb can load an alt cache file, but I couldn't do it)
+Now examine the cache_dump file and find your pool, then log device.
+We are looking for the "guid" of the log device.  Once you have it,
+again save it 10 places (and not on the livecd).
+
+** format your new log device **
+You still need a log device to bring this back up.  Anything will do
+if you are going to migrate your data off this setup.  I chose to keep
+my log device, now that I have a way to restore it.
+# cd /tmp
+# dd if=/dev/zero of=junk bs=1024k count=64
+# zpool create junkpool /tmp/junk log your_new_log_device
+# zpool export junkpool
+
+** Find your old disks **
+You need one of your pool's devices to read the vdev_label.  It will
+generally look something like this /dev/rdsk/cXtXdXs0 (or cXdXs0).
+Check out the label with:
+# zdb -l /dev/rdsk/cXtXdXs0
+(You can also find your old disks with zpool import on a livecd)
+
+** Fix it up! **
+For disk based log devices:
+# ./logfix /dev/rdsk/cXtXdXs0 /dev/rdsk/${your_new_log_device}s0 guid
+For file based log devices (this will be slow -- get the data off...):
+# ./logfix /dev/rdsk/cXtXdXs0 /path/your_new_log_file guid
+
+** Import your pool **
+Please before we go any further, COPY YOUR GUID SOMEWHERE SAFE!!!
+# zpool import -f pool
+This might take a while as ZFS does it's thing and checks everything out.
+
+I hope everything went ok! -- Jeb
+
