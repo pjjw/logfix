@@ -29,13 +29,17 @@ label_write(int fd, uint64_t offset, uint64_t size, void *buf)
 {
 	zio_block_tail_t *zbt, zbt_orig;
 	zio_cksum_t zc;
+	zio_checksum_info_t *ci = &zio_checksum_table[ZIO_CHECKSUM_LABEL];
 
 	zbt = (zio_block_tail_t *)((char *)buf + size) - 1;
 	zbt_orig = *zbt;
+	
+	ASSERT((uint_t)checksum < ZIO_CHECKSUM_FUNCTIONS);
+	ASSERT(ci->ci_func[0] != NULL);
 
 	ZIO_SET_CHECKSUM(&zbt->zbt_cksum, offset, 0, 0, 0);
-
-	zio_checksum(ZIO_CHECKSUM_LABEL, &zc, buf, size);
+	
+	ci->ci_func[0](buf, size, &zc);
 
 	VERIFY(pwrite64(fd, buf, size, offset) == size);
 
